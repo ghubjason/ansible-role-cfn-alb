@@ -1,0 +1,25 @@
+# tasks file for ansible-role-cfn-alb
+- name: Create build directory
+  file:
+    dest: build
+    state: directory
+
+- name: Template role
+  template:
+    src: alb.json.j2
+    dest: "build/{{alb_role_stack_name}}.json"
+
+- name: Create or remove role stack
+  cloudformation:
+    template_parameters:
+      VPC: "{{ alb_vpc|default(omit) }}"
+      SubnetIDs: "{{ alb_subnets|default(omit) }}"
+    template: "build/{{alb_role_stack_name}}.json"
+    stack_name: "{{ alb_role_stack_name }}"
+    state: "{{ alb_role_stack_state|default('present') }}"
+    region: "{{ region|default('us-west-2') }}"
+    security_token: "{{ lookup('env','AWS_SESSION_TOKEN')|default(omit, true) }}"
+    tags: "{{ alb_tags }}"
+  register: alb_cf_output
+
+- debug: msg="{{ alb_cf_output }}" verbosity=1
