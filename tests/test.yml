@@ -1,0 +1,17 @@
+---
+- name: test stack creation
+  hosts: test
+  vars:
+    alb_role_stack_name: "ansible-role-cfn-alb-testing"
+    alb_vpc: "YOUR-VPC-ID-HERE"
+    alb_subnets: "YOUR-SUBNET-ID-HERE,ANOTHER-SUBNET-ID-YOLO"
+  roles:
+    - ansible-role-cfn-alb
+
+- name: test stack removal 
+  hosts: test
+  vars:
+    alb_role_stack_name: "ansible-role-cfn-alb-testing"
+    alb_role_stack_state: "absent"
+  roles:
+    - ansible-role-cfn-alb

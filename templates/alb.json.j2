@@ -1,0 +1,205 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Long lived load balancer for {{ alb_dns_name|default('something...presumably') }}",
+  "Parameters": {
+    "VPC" : {
+      "Type" : "AWS::EC2::VPC::Id"
+    },
+    "SubnetIDs" : {
+      "Type": "List<AWS::EC2::Subnet::Id>",
+      "Description": "List of an existing subnet IDs to use for the load balancer and auto scaling group"
+    }
+  },
+  "Resources": {
+    "LoadBalancerSecurityGroup": {
+      "Type" : "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "VpcId": { "Ref" : "VPC" },
+        "GroupDescription": "Load Balancers in this security group are allowed to connect to instances in the corresponding LoadBalancerBackendSecurityGroup in this stack",
+        "SecurityGroupIngress": [
+        {# allow connections on each listener's InstancePort #}
+        {% if alb_scheme == 'internal' %}{# each internal cidr per each listener, for internal ALBs #}
+        {% for listener in alb_listeners %}
+        {% for cidr in alb_internal_cidrs %}
+        { "FromPort": "{{ listener.port }}", "ToPort": "{{ listener.port }}", "IpProtocol": "tcp", "CidrIp": "{{ cidr }}" } {% if not loop.last %}, {% endif %}
+        {% endfor %}
+        {% if not loop.last %}, {% endif %}
+        {% endfor %}
+        {% else %}{# each listener allwed from 0.0.0.0/0, for internet-facing ALBs #}
+        {% for listener in alb_listeners %}
+        {% for source in listener.sources|default(['0.0.0.0/0']) %}
+        { "FromPort": "{{ listener.port }}", "ToPort": "{{ listener.port }}", "IpProtocol": "tcp", "CidrIp": "{{ listener.source | default('0.0.0.0/0')}}" } {% if not loop.last %}, {% endif %}
+        {% endfor %}
+        {% if not loop.last %}, {% endif %}
+        {% endfor %}
+        {% endif %}
+        ]
+      }
+    },
+    "LoadBalancerBackendSecurityGroup": {
+      "Type" : "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "VpcId": { "Ref" : "VPC" },
+        "GroupDescription": "Instances in this security group allow connections from the corresponding LoadBalancerSecurityGroup; it should be applied to backends of this long lived load balancer",
+        "SecurityGroupIngress": [
+        {# allow connections from LoadBalancerSecurityGroup on each listener's InstancePort #}
+        {% for listener in alb_listeners %}
+          {
+            "FromPort": "{{ listener.instancePort }}",
+            "ToPort": "{{ listener.instancePort }}",
+            "IpProtocol": "tcp",
+            "SourceSecurityGroupId": { "Ref": "LoadBalancerSecurityGroup" }
+          }{% if not loop.last %}, {% endif %}
+        {% endfor %}
+        ]
+      }
+    },
+    {# finally, create an egress rule for each listener, for the backend instance port from the ALB
+       this is a separate resource because the security groups are inter-dependent #}
+    {% for listener in alb_listeners %}
+      "ALB{{listener.port}}to{{listener.instancePort}}": {
+        "Type": "AWS::EC2::SecurityGroupEgress",
+        "Properties": {
+          "GroupId": { "Ref": "LoadBalancerSecurityGroup" },
+          "IpProtocol": "tcp",
+          "FromPort": "{{ listener.instancePort }}",
+          "ToPort": "{{ listener.instancePort }}",
+          "DestinationSecurityGroupId": { "Ref": "LoadBalancerBackendSecurityGroup" }
+        }
+      },
+    {% endfor %}
+    "LoadBalancer": {
+      "Type": "AWS::ElasticLoadBalancingV2::LoadBalancer",
+      "Properties": {
+        {% if alb_logging_enabled == true %}
+        "AccessLoggingPolicy" : {
+          "EmitInterval": "5",
+          "Enabled": true,
+          "S3BucketName": "{{ alb_logging_bucket }}",
+          "S3BucketPrefix": "{{ alb_logging_prefix }}"
+        },
+        {% endif %}
+        {% if alb_sticky_session == true %}
+        "LBCookieStickinessPolicy" : [
+          {
+            {% if alb_sticky_expiration is defined %}
+            "CookieExpirationPeriod" : "{{ alb_sticky_expiration }}",
+            {% endif %}
+            "PolicyName" : "defaultListener"
+          }
+        ],
+        {% endif %}
+        {% if alb_drain_time > 0 %}
+        "ConnectionDrainingPolicy":{
+            "Enabled": true,
+            "Timeout": {{alb_drain_time|int}}
+        },
+        {% endif %}
+        "Scheme": "{{ alb_scheme }}",
+        "CrossZone": "{{ alb_cross_zone }}",
+        "SecurityGroups": [ { "Ref": "LoadBalancerSecurityGroup" } ],
+        "Subnets": { "Ref" : "SubnetIDs" },
+        "HealthCheck": {
+          "HealthyThreshold": "{{alb_health_check_healthy_threshold}}",
+          "UnhealthyThreshold": "{{alb_health_check_unhealthy_threshold}}",
+          "Interval": "{{alb_health_check_interval}}",
+          "Timeout": "{{alb_health_check_timeout}}",
+          "Target": "{{alb_health_check_target}}"
+        },
+        {% if alb_instances is defined %}
+        "Instances": [
+          {% for instance in alb_instances %}
+            "{{ instance }}"
+            {% if not loop.last %},{% endif %}
+          {% endfor %}
+        ],
+        {% endif %}
+        "Listeners": [
+        {% for listener in alb_listeners %}
+          {
+            "InstancePort": "{{ listener.instancePort }}",
+            "Protocol": "{{ listener.protocol }}",
+            "LoadBalancerPort": "{{ listener.port }}"
+            {% if alb_sticky_session == true %}
+            , "PolicyNames" : ["defaultListener"]
+            {% endif %}
+            {% if listener.protocol == 'https' or listener.protocol == 'ssl' %},
+            {% if alb_acm_id is defined %}
+              "SSLCertificateId" : { "Fn::Join" : ["", ["arn:aws:acm:{{ region }}:", "{{ aws_account_number }}", ":certificate/",
+                                 "{{ alb_acm_id }}" ]]}
+            {% else %}
+              "SSLCertificateId" : { "Fn::Join" : ["", ["arn:aws:iam::", "{{ aws_account_number }}", ":server-certificate/",
+	                             "{{ alb_cert_name | default(alb_dns_name) | regex_replace('\.$', '' ) }}"]]}
+            {% endif %}
+            {% if listener.instanceProtocol is defined %},
+              "InstanceProtocol": "{{ listener.instanceProtocol }}"
+            {% endif %}
+            {% endif %}
+          }
+        {% if not loop.last %},{% endif %}
+        {% endfor %}
+        ]
+        {% if alb_policy_names is defined %}
+          ,"Policies": [
+            {% for policyName in alb_policy_names %}
+              {
+                {% if policyName == 'EnableProxyProtocolPolicy' %}
+                  "PolicyName" : "EnableProxyProtocolPolicy",
+                  "PolicyType" : "ProxyProtocolPolicyType",
+                  "Attributes" : [{
+                    "Name":"ProxyProtocol",
+                    "Value":"true"
+                  }],
+                  "InstancePorts": [ "80" ]
+                {% endif %}
+              }
+              {% if not loop.last %}, {% endif %}
+            {% endfor %}
+          ]
+        {% endif %}
+        {% if alb_idle_timeout is defined %}
+          , "ConnectionSettings": {
+            "IdleTimeout" : {{ alb_idle_timeout }}
+          }
+        {% endif %}
+      }
+    }
+    {% if alb_dns_name is defined %}
+    ,
+    "DNSRecord" : {
+      "Type" : "AWS::Route53::RecordSetGroup",
+      "Properties" : {
+        "HostedZoneName" : {% if alb_zone_name is defined %}"{{ alb_zone_name | regex_replace('([^.])$', '\\1.') }}"{% else %}"{{ alb_dns_name | regex_replace('([^.])$', '\\1.') }}"{% endif %},
+        "Comment" : "alias targeted to LoadBalancer for {{alb_stack_name}}",
+        "RecordSets" : [
+          {
+            "Name" : "{{ alb_dns_name }}",
+            "Type" : "A",
+            "AliasTarget" : {
+              "DNSName" : { "Fn::GetAtt" : ["LoadBalancer", "DNSName"] },
+              "HostedZoneId" : { "Fn::GetAtt" : ["LoadBalancer","CanonicalHostedZoneNameID"] }
+            }
+          }
+        ]
+      }
+    }
+    {% endif %}
+  },
+  "Outputs": {
+    "LoadBalancerName": {
+      "Description": "Long Lived Load Balancer name",
+      "Value": {"Ref": "LoadBalancer" }
+    },
+    "TargetSecurityGroupId": {
+      "Description": "Add backends to this security group to allow access from the ALB",
+      "Value": {"Ref": "LoadBalancerBackendSecurityGroup"}
+    },
+    "DnsName": {
+      "Description": "Add backends to this security group to allow access from the ALB",
+      "Value": {"Fn::GetAtt": [ "LoadBalancer", "DNSName" ]}
+    },
+    "CanonicalHostedZoneNameID":{
+      "Value": {"Fn::GetAtt": ["LoadBalancer", "CanonicalHostedZoneNameID"]}
+    }
+  }
+}
