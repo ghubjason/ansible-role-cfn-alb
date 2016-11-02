@@ -3,12 +3,12 @@
   hosts: test
   vars:
     alb_role_stack_name: "ansible-role-cfn-alb-testing"
-    alb_vpc: "YOUR-VPC-ID-HERE"
-    alb_subnets: "YOUR-SUBNET-ID-HERE,ANOTHER-SUBNET-ID-YOLO"
+    alb_vpc: "vpc-fa3aca9e"
+    alb_subnets: "subnet-26371d7f,subnet-2e293659,subnet-3c8f7558"
   roles:
     - ansible-role-cfn-alb
 
-- name: test stack removal 
+- name: test stack removal
   hosts: test
   vars:
     alb_role_stack_name: "ansible-role-cfn-alb-testing"
