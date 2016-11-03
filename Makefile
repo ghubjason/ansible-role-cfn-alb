@@ -14,7 +14,7 @@ LABEL TEST_TAG=$$TEST_TAG
 ADD tests /tmp/playbook
 ADD . /tmp/playbook/roles/$$TEST_LABEL
 WORKDIR /tmp/playbook
-RUN ansible-playbook $$ANSIBLE_OPTIONS -i inventory test.yml
+RUN ansible-playbook $$ANSIBLE_OPTIONS -i inventory test.yml -vvvv
 endef
 export DOCKER_BODY
 .PHONY: default
