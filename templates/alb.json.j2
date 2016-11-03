@@ -25,7 +25,7 @@
         {% endfor %}
         {% if not loop.last %}, {% endif %}
         {% endfor %}
-        {% else %}{# each listener allwed from 0.0.0.0/0, for internet-facing ALBs #}
+        {% else %}{# each listener allowed from 0.0.0.0/0, for internet-facing ALBs #}
         {% for listener in alb_listeners %}
         {% for source in listener.sources|default(['0.0.0.0/0']) %}
         { "FromPort": "{{ listener.port }}", "ToPort": "{{ listener.port }}", "IpProtocol": "tcp", "CidrIp": "{{ listener.source | default('0.0.0.0/0')}}" } {% if not loop.last %}, {% endif %}
@@ -167,21 +167,22 @@
         "Port" : "{{ target_group.port }}",
         "Protocol" : "{{ target_group.protocol }}",
         {# Not really sure how to handle these as they're lists but do they need to be variables?? #}
-        "Tags" : [ Resource Tag, ... ],
-        "TargetGroupAttributes" : [ TargetGroupAttributes, ... ],
-        "Targets" : [ TargetDescription, ... ],
-        "UnhealthyThresholdCount" : Integer,
-        "VpcId" : String
+        "Tags" : [ { "Ref": "Tags" } ],
+        "TargetGroupAttributes" : [
+          { "Key" : "deregistration_delay.timeout_seconds", "Value" : "{{ target_group.deregistration_delay_timeout }}" },
+          { "Key" : "stickiness.enabled", "Value" : "{{ target_group.stickiness_enabled }}" },
+          { "Key" : "stickiness.type", "Value" : "{{ target_group.stickiness_type }}" },
+          { "Key" : "stickiness.lb_cookie.duration_seconds", "Value" : "{{ target_group.stickiness_lb_cookie_duration }}" }
+         ],
+        "Targets" : [
+        {% for target in target_group.targets %}
+          { "Id": "{{ target.id }}", "Port": "{{ target.port }}" }
+        {% endfor %}
+        ],
+        "UnhealthyThresholdCount" : "{{ target_group.unhealthy_threshold_count }}",
+        "VpcId" : { "Ref" : "VPC" }
 
-    }]
-        "HealthCheckPath": "",
-        "HealthCheckIntervalSeconds": ,
-        "VpcId": { "Ref" : "VPC" },
-        "Protocol": "",
-        "HealthCheckTimeOutSeconds": ,
-        "HealthCheckProtocol": "",
-        "LoadBalancerArns": [],
-
+    }],
     }
     {# Create the listener rules for the Application Load Balancer Listener and TargetGroup #}
     "Rules": {
