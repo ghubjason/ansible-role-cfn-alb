@@ -66,7 +66,7 @@
           "ToPort": "{{ listener.instancePort }}",
           "DestinationSecurityGroupId": { "Ref": "LoadBalancerBackendSecurityGroup" }
         }
-      }{% if not loop.last %}, {% endif %}
+      } {% if not loop.last %}, {% endif %}
     {% endfor %}
     "ApplicationLoadBalancer": {
       "Type": "AWS::ElasticLoadBalancingV2::LoadBalancer",
@@ -107,7 +107,7 @@
           {% endif %}
         ],
         {% endif %}
-        {% if alb_sticky_session == true %}
+        {% if alb_sticky_session == 'true' %}
         "LBCookieStickinessPolicy" : [
           {
             {% if alb_sticky_expiration is defined %}
@@ -120,7 +120,7 @@
         {% if alb_drain_time > 0 %}
         "ConnectionDrainingPolicy":{
             "Enabled": true,
-            "Timeout": {{alb_drain_time|int}}
+            "Timeout": {{ alb_drain_time|int }}
         },
         {% endif %}
         "SecurityGroups": [ { "Ref": "LoadBalancerSecurityGroup" } ],
@@ -134,7 +134,7 @@
         {% if listener.protocol == 'https' and listener.certificates is defined %}
         "Certificates" : [
           {% for certificate in listener.certificates %}
-          { "CertificateArn" : "{{ certificate.certificate_arn }}" }{% if not loop.last %}, {% endif %}
+          { "CertificateArn" : "{{ certificate.certificate_arn }}" } {% if not loop.last %}, {% endif %}
           {% endfor %}
         ],
         {% endif %}
@@ -181,10 +181,11 @@
         "UnhealthyThresholdCount" : "{{ target_group.unhealthy_threshold_count }}",
         "VpcId" : { "Ref" : "VPC" }
     }
-  }{% if not loop.last %}, {% endif %}
+  } {% if not loop.last %}, {% endif %}
+  ,
   {% endfor %}
-    {# Create the listener rules for the Application Load Balancer Listener and TargetGroup #}
-    {% for rule in alb_listener_rules %}
+  {# Create the listener rules for the Application Load Balancer Listener and TargetGroup #}
+  {% for rule in alb_listener_rules %}
     "{{ rule.name }}":{
       "Type": "AWS::ElasticLoadBalancingV2::ListenerRule",
       "Properties": {
@@ -203,7 +204,8 @@
         "ListenerArn": { "Ref": "ApplicationLoadBalancerListener"},
         "Priority": "{{ rule.priority }}"
       }
-    }
+    } {% if not loop.last %}, {% endif %}
+    {% endfor %}
     {% if alb_dns_name is defined %}
     ,
     "DNSRecord" : {
