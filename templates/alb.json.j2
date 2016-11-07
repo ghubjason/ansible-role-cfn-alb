@@ -180,12 +180,12 @@
         ],
         "UnhealthyThresholdCount" : "{{ target_group.unhealthy_threshold_count }}",
         "VpcId" : { "Ref" : "VPC" }
-
-    },
     }
+  }{% if not loop.last %}, {% endif %}
+  {% endfor %}
     {# Create the listener rules for the Application Load Balancer Listener and TargetGroup #}
-    "Rules": {
-      {% for rule in alb_listener_rules %}
+    {% for rule in alb_listener_rules %}
+    "{{ rule.name }}":{
       "Type": "AWS::ElasticLoadBalancingV2::ListenerRule",
       "Properties": {
         "Actions": [{
