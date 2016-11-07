@@ -107,22 +107,6 @@
           {% endif %}
         ],
         {% endif %}
-        {% if alb_sticky_session == 'true' %}
-        "LBCookieStickinessPolicy" : [
-          {
-            {% if alb_sticky_expiration is defined %}
-            "CookieExpirationPeriod" : "{{ alb_sticky_expiration }}",
-            {% endif %}
-            "PolicyName" : "defaultListener"
-          }
-        ],
-        {% endif %}
-        {% if alb_drain_time > 0 %}
-        "ConnectionDrainingPolicy":{
-            "Enabled": true,
-            "Timeout": {{ alb_drain_time|int }}
-        },
-        {% endif %}
         "SecurityGroups": [ { "Ref": "LoadBalancerSecurityGroup" } ],
         "Tags" : [ { "Ref": "Tags" }]
       }
