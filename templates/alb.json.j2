@@ -128,7 +128,7 @@
       }],
       "LoadBalancerArn" : { "Ref" : "{{ listener.load_balancer_arn }}" } ,
       "Port" : "{{ listener.port }}",
-      "Protocol" : "{{ listener.protocol }}"
+      "Protocol" : "{{ listener.protocol | default('tcp') }}"
       {% if listener.ssl_policy is defined %}ß
       , "SslPolicy" : "{{ listener.ssl_policy }}"
       {% endif %}
@@ -147,10 +147,12 @@
         "HealthCheckProtocol" : "{{ target_group.health_check_protocol }}",
         "HealthCheckTimeoutSeconds" : "{{ target_group.health_check_timeout_seconds }}",
         "HealthyThresholdCount" : "{{ target_group.healthy_threshold_count }}",
-        "Matcher" : "{{ target_group.matcher }}",
+        {% if target_group.matcher is defined %}
+           "Matcher" : "{{ target_group.matcher }}",
+        {% endif %}
         "Name" : "{{ target_group.name }}",
         "Port" : "{{ target_group.port }}",
-        "Protocol" : "{{ target_group.protocol }}",
+        "Protocol" : "{{ target_group.protocol | default('tcp')}}",
         {# Not really sure how to handle these as they're lists but do they need to be variables?? #}
         "Tags" : [ { "Ref": "Tags" } ],
         "TargetGroupAttributes" : [
