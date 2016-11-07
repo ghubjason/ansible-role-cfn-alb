@@ -5,9 +5,24 @@
     alb_role_stack_name: "ansible-role-cfn-alb-testing"
     alb_vpc: "vpc-fa3aca9e"
     alb_subnets: "subnet-26371d7f,subnet-2e293659,subnet-3c8f7558"
+    alb_target_groups:
+      - name: "TestTargetGroup1"
+        health_check_interval_seconds: 3
+        health_check_path: "/healthcheck"
+      - name: "TestTargetGroup2"
+        health_check_interval_seconds: 5
+        health_check_path: "/healthcheck"
+    alb_listener_rules:
+      - name: "ListenerRule1"
+        actions:
+          - type: "forward"
+            target_group_name: "TestTargetGroup1"
+      - name: "ListenerRule2"
+        actions:
+          - type: "forward"
+            target_group_name: "TestTargetGroup2"
   roles:
     - ansible-role-cfn-alb
-
 - name: test stack removal
   hosts: test
   vars:
