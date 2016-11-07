@@ -188,10 +188,14 @@
     "{{ rule.name }}":{
       "Type": "AWS::ElasticLoadBalancingV2::ListenerRule",
       "Properties": {
-        "Actions": [{
-          "Type": "{{ rule.type }}",
-          "TargetGroupArn" : { "Ref": "ApplicationLoadBalancerTargetGroup" }
-        }],
+        {% for action in rule.actions %}
+        {
+          "Type":"{{ action.type }}"
+          "TargetGroupArn": { "Ref" "{{ action.target_group_name }}" }
+        }
+        {% if not loop.last %}, {% endif %}
+        {% endfor %}
+
         "Conditions": [{
           "Field": "path-pattern",
           "Values": [ "{{ rule.pattern }}" ]
