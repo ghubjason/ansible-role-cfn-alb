@@ -66,7 +66,7 @@
           "ToPort": "{{ listener.instancePort }}",
           "DestinationSecurityGroupId": { "Ref": "LoadBalancerBackendSecurityGroup" }
         }
-      },
+      }{% if not loop.last %}, {% endif %}
     {% endfor %}
     "ApplicationLoadBalancer": {
       "Type": "AWS::ElasticLoadBalancingV2::LoadBalancer",
@@ -81,13 +81,13 @@
             "Value" : "{{ alb_logging_enabled }}"
             }
           {% endif %}
-          {% if alb_logging_enabled is defined and alb_logging_enabled %}
+          {% if alb_logging_enabled is defined and alb_logging_enabled == 'true' %}
           ,{
             "Key" : "access_logs.s3.bucket",
             "Value" : "{{ alb_logging_bucket }}"
           }
           {% endif %}
-          {% if alb_logging_enabled is defined and alb_logging_enabled and alb_logging_prefix is defined %}
+          {% if alb_logging_enabled is defined and alb_logging_enabled == 'true' %}
           ,{
             "Key" : "access_logs.s3.prefix",
             "Value" : "{{ alb_logging_prefix }}",
@@ -134,7 +134,7 @@
         {% if listener.protocol == 'https' and listener.certificates is defined %}
         "Certificates" : [
           {% for certificate in listener.certificates %}
-          { "CertificateArn" : "{{ certificate.certificate_arn }}" }
+          { "CertificateArn" : "{{ certificate.certificate_arn }}" }{% if not loop.last %}, {% endif %}
           {% endfor %}
         ],
         {% endif %}
@@ -150,10 +150,9 @@
         {% endif %}
       }
     },
-    "TargetGroups": {
     {# Create the target group for the Application Load Balancer #}
-    "TargetGroups": [{
-      {% for target_group in alb_target_groups %}
+    {% for target_group in alb_target_groups %}
+    "{{ target_group.name }}":{
       "Type" : "AWS::ElasticLoadBalancingV2::TargetGroup",
       "Properties" : {
         "HealthCheckIntervalSeconds" : "{{ target_group.health_check_interval_seconds }}",
@@ -176,13 +175,13 @@
          ],
         "Targets" : [
         {% for target in target_group.targets %}
-          { "Id": "{{ target.id }}", "Port": "{{ target.port }}" }
+          { "Id": "{{ target.id }}", "Port": "{{ target.port }}" }{% if not loop.last %}, {% endif %}
         {% endfor %}
         ],
         "UnhealthyThresholdCount" : "{{ target_group.unhealthy_threshold_count }}",
         "VpcId" : { "Ref" : "VPC" }
 
-    }],
+    },
     }
     {# Create the listener rules for the Application Load Balancer Listener and TargetGroup #}
     "Rules": {
