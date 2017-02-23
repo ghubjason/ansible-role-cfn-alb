@@ -13,10 +13,9 @@ alb_internal_cidrs:
 - "10.201.0.0/17"
 alb_subnet_group: dmz
 region: us-west-2
-alb_logging_enabled: false
+alb_logging_enabled: true
 alb_logging_interval: 5
-alb_cross_zone: false
 # alb_logging_bucket
-alb_logging_prefix: ''
+alb_logging_prefix: 'ansible-alb-logging'
 alb_drain_time: 0
 alb_tags: {}

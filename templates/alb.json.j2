@@ -25,7 +25,7 @@
         {% endfor %}
         {% if not loop.last %}, {% endif %}
         {% endfor %}
-        {% else %}{# each listener allwed from 0.0.0.0/0, for internet-facing ALBs #}
+        {% else %}{# each listener allowed from 0.0.0.0/0, for internet-facing ALBs #}
         {% for listener in alb_listeners %}
         {% for source in listener.sources|default(['0.0.0.0/0']) %}
         { "FromPort": "{{ listener.port }}", "ToPort": "{{ listener.port }}", "IpProtocol": "tcp", "CidrIp": "{{ listener.source | default('0.0.0.0/0')}}" } {% if not loop.last %}, {% endif %}
@@ -47,7 +47,7 @@
           {
             "FromPort": "{{ listener.instancePort }}",
             "ToPort": "{{ listener.instancePort }}",
-            "IpProtocol": "tcp",
+            "IpProtocol": "http",
             "SourceSecurityGroupId": { "Ref": "LoadBalancerSecurityGroup" }
           }{% if not loop.last %}, {% endif %}
         {% endfor %}
@@ -66,104 +66,132 @@
           "ToPort": "{{ listener.instancePort }}",
           "DestinationSecurityGroupId": { "Ref": "LoadBalancerBackendSecurityGroup" }
         }
-      },
+      } {% if not loop.last %}, {% endif %}
     {% endfor %}
-    "LoadBalancer": {
+    "ApplicationLoadBalancer": {
       "Type": "AWS::ElasticLoadBalancingV2::LoadBalancer",
       "Properties": {
-        {% if alb_logging_enabled == true %}
-        "AccessLoggingPolicy" : {
-          "EmitInterval": "5",
-          "Enabled": true,
-          "S3BucketName": "{{ alb_logging_bucket }}",
-          "S3BucketPrefix": "{{ alb_logging_prefix }}"
-        },
-        {% endif %}
-        {% if alb_sticky_session == true %}
-        "LBCookieStickinessPolicy" : [
-          {
-            {% if alb_sticky_expiration is defined %}
-            "CookieExpirationPeriod" : "{{ alb_sticky_expiration }}",
-            {% endif %}
-            "PolicyName" : "defaultListener"
-          }
-        ],
-        {% endif %}
-        {% if alb_drain_time > 0 %}
-        "ConnectionDrainingPolicy":{
-            "Enabled": true,
-            "Timeout": {{alb_drain_time|int}}
-        },
-        {% endif %}
         "Scheme": "{{ alb_scheme }}",
-        "CrossZone": "{{ alb_cross_zone }}",
-        "SecurityGroups": [ { "Ref": "LoadBalancerSecurityGroup" } ],
         "Subnets": { "Ref" : "SubnetIDs" },
-        "HealthCheck": {
-          "HealthyThreshold": "{{alb_health_check_healthy_threshold}}",
-          "UnhealthyThreshold": "{{alb_health_check_unhealthy_threshold}}",
-          "Interval": "{{alb_health_check_interval}}",
-          "Timeout": "{{alb_health_check_timeout}}",
-          "Target": "{{alb_health_check_target}}"
-        },
-        {% if alb_instances is defined %}
-        "Instances": [
-          {% for instance in alb_instances %}
-            "{{ instance }}"
-            {% if not loop.last %},{% endif %}
-          {% endfor %}
+        {% if alb_attributes is defined %}
+        "LoadBalancerAttributes" : [
+          {% if alb_logging_enabled is defined %}
+            {
+            "Key" : "access_logs.s3.enabled",
+            "Value" : "{{ alb_logging_enabled }}"
+            }
+          {% endif %}
+          {% if alb_logging_enabled is defined and alb_logging_enabled == 'true' %}
+          ,{
+            "Key" : "access_logs.s3.bucket",
+            "Value" : "{{ alb_logging_bucket }}"
+          }
+          {% endif %}
+          {% if alb_logging_enabled is defined and alb_logging_enabled == 'true' %}
+          ,{
+            "Key" : "access_logs.s3.prefix",
+            "Value" : "{{ alb_logging_prefix }}",
+          }
+          {% endif %}
+          {% if alb_deletion_protection is defined %}
+          ,{
+            "Key" : "deletion_protection.enabled",
+            "Value" : "{{ alb_deletion_protection }}"
+          }
+          {% endif %}
+          {% if alb_idle_timeout_seconds is defined %}
+          ,{
+            "Key" : "idle_timeout.timeout_seconds",
+            "Value" : "{{ alb_idle_timeout_seconds }}"
+          }
+          {% endif %}
         ],
         {% endif %}
-        "Listeners": [
-        {% for listener in alb_listeners %}
-          {
-            "InstancePort": "{{ listener.instancePort }}",
-            "Protocol": "{{ listener.protocol }}",
-            "LoadBalancerPort": "{{ listener.port }}"
-            {% if alb_sticky_session == true %}
-            , "PolicyNames" : ["defaultListener"]
-            {% endif %}
-            {% if listener.protocol == 'https' or listener.protocol == 'ssl' %},
-            {% if alb_acm_id is defined %}
-              "SSLCertificateId" : { "Fn::Join" : ["", ["arn:aws:acm:{{ region }}:", "{{ aws_account_number }}", ":certificate/",
-                                 "{{ alb_acm_id }}" ]]}
-            {% else %}
-              "SSLCertificateId" : { "Fn::Join" : ["", ["arn:aws:iam::", "{{ aws_account_number }}", ":server-certificate/",
-	                             "{{ alb_cert_name | default(alb_dns_name) | regex_replace('\.$', '' ) }}"]]}
-            {% endif %}
-            {% if listener.instanceProtocol is defined %},
-              "InstanceProtocol": "{{ listener.instanceProtocol }}"
-            {% endif %}
-            {% endif %}
-          }
-        {% if not loop.last %},{% endif %}
-        {% endfor %}
-        ]
-        {% if alb_policy_names is defined %}
-          ,"Policies": [
-            {% for policyName in alb_policy_names %}
-              {
-                {% if policyName == 'EnableProxyProtocolPolicy' %}
-                  "PolicyName" : "EnableProxyProtocolPolicy",
-                  "PolicyType" : "ProxyProtocolPolicyType",
-                  "Attributes" : [{
-                    "Name":"ProxyProtocol",
-                    "Value":"true"
-                  }],
-                  "InstancePorts": [ "80" ]
-                {% endif %}
-              }
-              {% if not loop.last %}, {% endif %}
-            {% endfor %}
-          ]
-        {% endif %}
-        {% if alb_idle_timeout is defined %}
-          , "ConnectionSettings": {
-            "IdleTimeout" : {{ alb_idle_timeout }}
-          }
-        {% endif %}
+        "SecurityGroups": [ { "Ref": "LoadBalancerSecurityGroup" } ],
+        "Tags" : [ { "Ref": "Tags" }]
       }
+    },
+    {% for listener in alb_listeners %}
+    "{{ listener.name }}":{
+    "Type" : "AWS::ElasticLoadBalancingV2::Listener",
+    "Properties" : {
+      {% if listener.protocol == 'https' and listener.certificates is defined %}
+      "Certificates" : [
+        {% for certificate in listener.certificates %}
+        { "CertificateArn" : "{{ certificate.certificate_arn }}" } {% if not loop.last %}, {% endif %}
+        {% endfor %}
+      ],
+      {% endif %}
+      "DefaultActions" : [{
+        "Type" : "{{ listener.type }}",
+        "TargetGroupArn" : { "Ref" : "{{ listener.target_group_name }}" }
+      }],
+      "LoadBalancerArn" : { "Ref" : "{{ listener.load_balancer_arn }}" } ,
+      "Port" : "{{ listener.port }}",
+      "Protocol" : "{{ listener.protocol }}"
+      {% if listener.ssl_policy is defined %}ß
+      , "SslPolicy" : "{{ listener.ssl_policy }}"
+      {% endif %}
     }
+  } {% if not loop.last %}, {% endif %}
+  ,
+  {% endfor %}
+    {# Create the target group for the Application Load Balancer #}
+    {% for target_group in alb_target_groups %}
+    "{{ target_group.name }}":{
+      "Type" : "AWS::ElasticLoadBalancingV2::TargetGroup",
+      "Properties" : {
+        "HealthCheckIntervalSeconds" : "{{ target_group.health_check_interval_seconds }}",
+        "HealthCheckPath" : "{{ target_group.health_check_path }}",
+        "HealthCheckPort" : "{{ target_group.health_check_port }}",
+        "HealthCheckProtocol" : "{{ target_group.health_check_protocol }}",
+        "HealthCheckTimeoutSeconds" : "{{ target_group.health_check_timeout_seconds }}",
+        "HealthyThresholdCount" : "{{ target_group.healthy_threshold_count }}",
+        "Matcher" : "{{ target_group.matcher }}",
+        "Name" : "{{ target_group.name }}",
+        "Port" : "{{ target_group.port }}",
+        "Protocol" : "{{ target_group.protocol }}",
+        {# Not really sure how to handle these as they're lists but do they need to be variables?? #}
+        "Tags" : [ { "Ref": "Tags" } ],
+        "TargetGroupAttributes" : [
+          { "Key" : "deregistration_delay.timeout_seconds", "Value" : "{{ target_group.deregistration_delay_timeout }}" },
+          { "Key" : "stickiness.enabled", "Value" : "{{ target_group.stickiness_enabled }}" },
+          { "Key" : "stickiness.type", "Value" : "{{ target_group.stickiness_type }}" },
+          { "Key" : "stickiness.lb_cookie.duration_seconds", "Value" : "{{ target_group.stickiness_lb_cookie_duration }}" }
+         ],
+        "Targets" : [
+        {% for target in target_group.targets %}
+          { "Id": "{{ target.id }}", "Port": "{{ target.port }}" }{% if not loop.last %}, {% endif %}
+        {% endfor %}
+        ],
+        "UnhealthyThresholdCount" : "{{ target_group.unhealthy_threshold_count }}",
+        "VpcId" : { "Ref" : "VPC" }
+    }
+  } {% if not loop.last %}, {% endif %}
+  ,
+  {% endfor %}
+  {# Create the listener rules for the Application Load Balancer Listener and TargetGroup #}
+  {% for rule in alb_listener_rules %}
+    "{{ rule.name }}":{
+      "Type": "AWS::ElasticLoadBalancingV2::ListenerRule",
+      "Properties": {
+        {% for action in rule.actions %}
+        {
+          "Type":"{{ action.type }}"
+          "TargetGroupArn": { "Ref" "{{ action.target_group_name }}" }
+        }
+        {% if not loop.last %}, {% endif %}
+        {% endfor %}
+
+        "Conditions": [{
+          "Field": "path-pattern",
+          "Values": [ "{{ rule.pattern }}" ]
+        }],
+        "ListenerArn": { "Ref": "ApplicationLoadBalancerListener"},
+        "Priority": "{{ rule.priority }}"
+      }
+    } {% if not loop.last %}, {% endif %}
+    {% endfor %}
     {% if alb_dns_name is defined %}
     ,
     "DNSRecord" : {
@@ -197,9 +225,6 @@
     "DnsName": {
       "Description": "Add backends to this security group to allow access from the ALB",
       "Value": {"Fn::GetAtt": [ "LoadBalancer", "DNSName" ]}
-    },
-    "CanonicalHostedZoneNameID":{
-      "Value": {"Fn::GetAtt": ["LoadBalancer", "CanonicalHostedZoneNameID"]}
     }
   }
 }
