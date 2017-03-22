@@ -4,10 +4,10 @@
     dest: build
     state: directory
 
-- name: Template role
+- name: Create template
   template:
     src: alb.json.j2
-    dest: "build/{{alb_role_stack_name}}.json"
+    dest: "build/{{ alb_role_stack_name }}.json"
 
 - name: Create or remove role stack
   cloudformation:

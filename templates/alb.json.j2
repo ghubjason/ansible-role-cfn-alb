@@ -1,6 +1,6 @@
 {
   "AWSTemplateFormatVersion": "2010-09-09",
-  "Description": "Long lived load balancer for {{ alb_dns_name|default('something...presumably') }}",
+  "Description": "Long lived application load balancer for {{ alb_dns_name|default('something...presumably') }}",
   "Parameters": {
     "VPC" : {
       "Type" : "AWS::EC2::VPC::Id"
@@ -124,9 +124,9 @@
       {% endif %}
       "DefaultActions" : [{
         "Type" : "{{ listener.type }}",
-        "TargetGroupArn" : { "Ref" : "{{ listener.target_group_name }}" }
+        "TargetGroupArn" : { "Ref" : "{{ alb_target_groups }}" }
       }],
-      "LoadBalancerArn" : { "Ref" : "{{ listener.load_balancer_arn }}" } ,
+      "LoadBalancerArn" : { "Ref" : "{{ alb_listeners }}" } ,
       "Port" : "{{ listener.port }}",
       "Protocol" : "{{ listener.protocol | default('tcp') }}"
       {% if listener.ssl_policy is defined %}ß
@@ -141,32 +141,25 @@
     "{{ target_group.name }}":{
       "Type" : "AWS::ElasticLoadBalancingV2::TargetGroup",
       "Properties" : {
-        "HealthCheckIntervalSeconds" : "{{ target_group.health_check_interval_seconds }}",
-        "HealthCheckPath" : "{{ target_group.health_check_path }}",
-        "HealthCheckPort" : "{{ target_group.health_check_port }}",
-        "HealthCheckProtocol" : "{{ target_group.health_check_protocol }}",
-        "HealthCheckTimeoutSeconds" : "{{ target_group.health_check_timeout_seconds }}",
-        "HealthyThresholdCount" : "{{ target_group.healthy_threshold_count }}",
+        "HealthCheckIntervalSeconds" : "{{ alb_health_check_interval_seconds }}",
+        "HealthCheckPath" : "{{ alb_health_check_path }}",
+        "HealthCheckPort" : "{{ alb_health_check_port }}",
+        "HealthCheckProtocol" : "{{ alb_health_check_protocol }}",
+        "HealthCheckTimeoutSeconds" : "{{ alb_health_check_timeout_seconds }}",
+        "HealthyThresholdCount" : "{{ alb_healthy_threshold_count }}",
         {% if target_group.matcher is defined %}
            "Matcher" : "{{ target_group.matcher }}",
         {% endif %}
         "Name" : "{{ target_group.name }}",
         "Port" : "{{ target_group.port }}",
         "Protocol" : "{{ target_group.protocol | default('tcp')}}",
-        {# Not really sure how to handle these as they're lists but do they need to be variables?? #}
         "Tags" : [ { "Ref": "Tags" } ],
-        "TargetGroupAttributes" : [
-          { "Key" : "deregistration_delay.timeout_seconds", "Value" : "{{ target_group.deregistration_delay_timeout }}" },
-          { "Key" : "stickiness.enabled", "Value" : "{{ target_group.stickiness_enabled }}" },
-          { "Key" : "stickiness.type", "Value" : "{{ target_group.stickiness_type }}" },
-          { "Key" : "stickiness.lb_cookie.duration_seconds", "Value" : "{{ target_group.stickiness_lb_cookie_duration }}" }
-         ],
         "Targets" : [
         {% for target in target_group.targets %}
           { "Id": "{{ target.id }}", "Port": "{{ target.port }}" }{% if not loop.last %}, {% endif %}
         {% endfor %}
         ],
-        "UnhealthyThresholdCount" : "{{ target_group.unhealthy_threshold_count }}",
+        "UnhealthyThresholdCount" : "{{ alb_unhealthy_threshold_count }}",
         "VpcId" : { "Ref" : "VPC" }
     }
   } {% if not loop.last %}, {% endif %}
@@ -189,7 +182,7 @@
           "Field": "path-pattern",
           "Values": [ "{{ rule.pattern }}" ]
         }],
-        "ListenerArn": { "Ref": "ApplicationLoadBalancerListener"},
+        "ListenerArn": { "Ref": "alb_listeners"},
         "Priority": "{{ rule.priority }}"
       }
     } {% if not loop.last %}, {% endif %}
