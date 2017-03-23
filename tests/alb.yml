@@ -1,0 +1,76 @@
+---
+sg_role_stack_name: "ansible-role-cfn-alb-sg-testing"
+sg_scheme: "internal"
+app1_port: 9000
+app1_target: 54321
+app2_port: 5000
+app2_target: 4321
+sg_rules:
+  - protocol: tcp
+    port: "{{ app1_port }}"
+    instance_protocol: tcp
+    instancePort: "{{ app1_target }}"
+  - protocol: tcp
+    port: "{{ app2_port }}"
+    instance_protocol: tcp
+    instancePort: "{{ app2_target }}"
+sg_internal_cidrs: "{{ allowed_ips.split(',') }}"
+ec2_stack_name: "{{ alb_stack_name }}-test-ec2"
+ec2_key_name: "dev-mgage-ansible"
+ec2_instance_type: "t2.nano"
+ec2_sgs: "{{ sg_outputs.stack_outputs.BackendSecurityGroupId }}"
+ec2_user_data_script_file: "user_data.sh"
+ec2_role_policy_document: ""
+ec2_tags:
+  "Name": "{{ ec2_stack_name }}"
+
+alb_sgs: "{{ sg_outputs.stack_outputs.FrontendSecurityGroupId }}"
+alb_stack_name: "ansible-role-cfn-alb-testing"
+alb_vpc: "vpc-fa3aca9e"
+alb_subnets: "subnet-26371d7f,subnet-2e293659,subnet-3c8f7558"
+alb_target_groups:
+  - name: "TestTargetGroup1"
+    health_check_interval_seconds: 3
+    port: "{{ app1_target }}"
+    protocol: HTTP
+    targets:
+      - id: "{{ ec2_stack.stack_outputs.InstanceId }}"
+        port: "{{ app1_target }}"
+  - name: "TestTargetGroup2"
+    health_check_interval_seconds: 3
+    health_check_path: "/"
+    port: "{{ app2_target }}"
+    protocol: HTTP
+    targets:
+      - id: "{{ ec2_stack.stack_outputs.InstanceId }}"
+        port: "{{ app2_target }}"
+alb_listeners:
+  - name: "Listener1"
+    port: "{{ app1_port }}"
+    protocol: "HTTP"
+    default_actions:
+      - type: "forward"
+        target_group_name: "TestTargetGroup1"
+  - name: "Listener2"
+    port: "{{ app2_port }}"
+    protocol: "HTTP"
+    default_actions:
+      - type: "forward"
+        target_group_name: "TestTargetGroup2"
+alb_listener_rules:
+  - name: "ListenerRule1"
+    actions:
+      - type: "forward"
+        target_group_name: "TestTargetGroup1"
+    pattern: "*"
+    priority: 1
+    listener: "Listener1"
+  - name: "ListenerRule2"
+    actions:
+      - type: "forward"
+        target_group_name: "TestTargetGroup2"
+    pattern: "*"
+    priority: 2
+    listener: "Listener2"
+alb_tags:
+  "Name": "{{ alb_stack_name }}"

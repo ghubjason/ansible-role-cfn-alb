@@ -1,0 +1,32 @@
+- hosts: test
+  vars_files:
+    - "alb.yml"
+  roles:
+    - role: sgs
+    - role: ec2
+    - role: ansible-role-cfn-alb
+
+  post_tasks:
+    - name: Wait for the URL to become available
+      pause:
+        minutes: 1
+
+    - name: "Check URL {{ alb_cf_output.stack_outputs.DnsName }}:{{ app1_port }}"
+      uri:
+        url: "http://{{ alb_cf_output.stack_outputs.DnsName }}:{{ app1_port }}/"
+        return_content: yes
+      register: webpage
+
+    - name: Fail if URL is not returning expected content
+      fail: msg="Expected 'Hello, world' in page content, but none found."
+      when: "'Hello, world' not in webpage.content"
+
+    - name: "Check URL {{ alb_cf_output.stack_outputs.DnsName }}:{{ app2_port }}"
+      uri:
+        url: "http://{{ alb_cf_output.stack_outputs.DnsName }}:{{ app2_port }}/"
+        return_content: yes
+      register: webpage
+
+    - name: Fail if URL is not returning expected content
+      fail: msg="Expected 'Hello, world' in page content, but none found."
+      when: "'Hello, world' not in webpage.content"

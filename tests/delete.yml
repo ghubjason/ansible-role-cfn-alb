@@ -1,0 +1,11 @@
+- hosts: test
+  vars:
+    sg_stack_state: absent
+    ec2_stack_state: absent
+    alb_stack_state: absent
+  vars_files:
+    - "alb.yml"
+  roles:
+    - role: ansible-role-cfn-alb
+    - role: ec2
+    - role: sgs

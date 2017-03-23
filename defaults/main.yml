@@ -1,21 +1,10 @@
-alb_scheme: internet-facing
-target_group:
-- name: "test"
-  port: 80
+alb_scheme: internal
 alb_healthy_threshold_count: 3
 alb_health_check_timeout_seconds: 2
 alb_health_check_interval_seconds: 15
 alb_health_check_path: "/up"
 alb_health_check_port: 80
-alb_health_check_protocol: tcp
-alb_unhealthy_threshold_count: 1
-alb_listeners:
-- name: "test"
-  port: 80
-  type: "forward"
-  target_group_name: "test"
-  instancePort: 80
-  protocol: http
-alb_internal_cidrs:
-- "10.201.0.0/17"
+alb_health_check_protocol: HTTP
+alb_unhealthy_threshold_count: 2
+alb_stack_state: present
 alb_tags: {}
