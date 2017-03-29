@@ -1,0 +1,6 @@
+- src: https://github.com/mGageTechOps/ansible-role-cfn-security-groups
+  name: sgs
+  version: 0.1.0
+- src: https://github.com/mGageTechOps/ansible-role-module-troposphere-ec2
+  name: ec2
+  version: 0.0.4

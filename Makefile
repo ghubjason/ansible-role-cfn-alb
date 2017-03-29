@@ -14,11 +14,13 @@ LABEL TEST_TAG=$$TEST_TAG
 ADD tests /tmp/playbook
 ADD . /tmp/playbook/roles/$$TEST_LABEL
 WORKDIR /tmp/playbook
-RUN ansible-playbook $$ANSIBLE_OPTIONS -i inventory test.yml -vvvv
+RUN pip install troposphere==1.6.0 awacs
+RUN ansible-galaxy install -r requirements.yml -p ./roles
+RUN ansible-playbook $$ANSIBLE_OPTIONS -i inventory test.yml -e sg_vpc=${VPC_ID} -e ec2_ami=${EC2_AMI} -e ec2_subnet_id=${SUBNET_ID} -e allowed_ips=${ALB_ALLOWED_IPS}
 endef
 export DOCKER_BODY
 .PHONY: default
-testv: ANSIBLE_OPTIONS = -v
+testv: ANSIBLE_OPTIONS = -vvvv
 test testv:
 	echo 'FROM mgage/docker-ansible' > tests/Dockerfile
 	echo "$$DOCKER_BODY" >> tests/Dockerfile
