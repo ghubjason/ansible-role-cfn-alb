@@ -1,21 +1,10 @@
-alb_scheme: internet-facing
-alb_health_check_healthy_threshold: 3
-alb_health_check_unhealthy_threshold: 3
-alb_health_check_timeout: 2
-alb_health_check_interval: 15
-alb_health_check_target: HTTP:80/up
-alb_sticky_session: false
-alb_listeners:
-- port: 80
-  instancePort: 80
-  protocol: http
-alb_internal_cidrs:
-- "10.201.0.0/17"
-alb_subnet_group: dmz
-region: us-west-2
-alb_logging_enabled: true
-alb_logging_interval: 5
-# alb_logging_bucket
-alb_logging_prefix: 'ansible-alb-logging'
-alb_drain_time: 0
+alb_scheme: internal
+alb_healthy_threshold_count: 3
+alb_health_check_timeout_seconds: 2
+alb_health_check_interval_seconds: 15
+alb_health_check_path: "/up"
+alb_health_check_port: 80
+alb_health_check_protocol: HTTP
+alb_unhealthy_threshold_count: 2
+alb_stack_state: present
 alb_tags: {}

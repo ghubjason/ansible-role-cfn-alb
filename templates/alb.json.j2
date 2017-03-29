@@ -1,9 +1,12 @@
 {
   "AWSTemplateFormatVersion": "2010-09-09",
-  "Description": "Long lived load balancer for {{ alb_dns_name|default('something...presumably') }}",
+  "Description": "Long lived application load balancer for {{ alb_dns_name|default('something...presumably') }}",
   "Parameters": {
     "VPC" : {
       "Type" : "AWS::EC2::VPC::Id"
+    },
+    "SecurityGroups": {
+      "Type" : "List<AWS::EC2::SecurityGroup::Id>"
     },
     "SubnetIDs" : {
       "Type": "List<AWS::EC2::Subnet::Id>",
@@ -11,63 +14,6 @@
     }
   },
   "Resources": {
-    "LoadBalancerSecurityGroup": {
-      "Type" : "AWS::EC2::SecurityGroup",
-      "Properties": {
-        "VpcId": { "Ref" : "VPC" },
-        "GroupDescription": "Load Balancers in this security group are allowed to connect to instances in the corresponding LoadBalancerBackendSecurityGroup in this stack",
-        "SecurityGroupIngress": [
-        {# allow connections on each listener's InstancePort #}
-        {% if alb_scheme == 'internal' %}{# each internal cidr per each listener, for internal ALBs #}
-        {% for listener in alb_listeners %}
-        {% for cidr in alb_internal_cidrs %}
-        { "FromPort": "{{ listener.port }}", "ToPort": "{{ listener.port }}", "IpProtocol": "tcp", "CidrIp": "{{ cidr }}" } {% if not loop.last %}, {% endif %}
-        {% endfor %}
-        {% if not loop.last %}, {% endif %}
-        {% endfor %}
-        {% else %}{# each listener allowed from 0.0.0.0/0, for internet-facing ALBs #}
-        {% for listener in alb_listeners %}
-        {% for source in listener.sources|default(['0.0.0.0/0']) %}
-        { "FromPort": "{{ listener.port }}", "ToPort": "{{ listener.port }}", "IpProtocol": "tcp", "CidrIp": "{{ listener.source | default('0.0.0.0/0')}}" } {% if not loop.last %}, {% endif %}
-        {% endfor %}
-        {% if not loop.last %}, {% endif %}
-        {% endfor %}
-        {% endif %}
-        ]
-      }
-    },
-    "LoadBalancerBackendSecurityGroup": {
-      "Type" : "AWS::EC2::SecurityGroup",
-      "Properties": {
-        "VpcId": { "Ref" : "VPC" },
-        "GroupDescription": "Instances in this security group allow connections from the corresponding LoadBalancerSecurityGroup; it should be applied to backends of this long lived load balancer",
-        "SecurityGroupIngress": [
-        {# allow connections from LoadBalancerSecurityGroup on each listener's InstancePort #}
-        {% for listener in alb_listeners %}
-          {
-            "FromPort": "{{ listener.instancePort }}",
-            "ToPort": "{{ listener.instancePort }}",
-            "IpProtocol": "http",
-            "SourceSecurityGroupId": { "Ref": "LoadBalancerSecurityGroup" }
-          }{% if not loop.last %}, {% endif %}
-        {% endfor %}
-        ]
-      }
-    },
-    {# finally, create an egress rule for each listener, for the backend instance port from the ALB
-       this is a separate resource because the security groups are inter-dependent #}
-    {% for listener in alb_listeners %}
-      "ALB{{listener.port}}to{{listener.instancePort}}": {
-        "Type": "AWS::EC2::SecurityGroupEgress",
-        "Properties": {
-          "GroupId": { "Ref": "LoadBalancerSecurityGroup" },
-          "IpProtocol": "tcp",
-          "FromPort": "{{ listener.instancePort }}",
-          "ToPort": "{{ listener.instancePort }}",
-          "DestinationSecurityGroupId": { "Ref": "LoadBalancerBackendSecurityGroup" }
-        }
-      } {% if not loop.last %}, {% endif %}
-    {% endfor %}
     "ApplicationLoadBalancer": {
       "Type": "AWS::ElasticLoadBalancingV2::LoadBalancer",
       "Properties": {
@@ -107,8 +53,7 @@
           {% endif %}
         ],
         {% endif %}
-        "SecurityGroups": [ { "Ref": "LoadBalancerSecurityGroup" } ],
-        "Tags" : [ { "Ref": "Tags" }]
+        "SecurityGroups": {"Ref" : "SecurityGroups" }
       }
     },
     {% for listener in alb_listeners %}
@@ -122,72 +67,72 @@
         {% endfor %}
       ],
       {% endif %}
-      "DefaultActions" : [{
-        "Type" : "{{ listener.type }}",
-        "TargetGroupArn" : { "Ref" : "{{ listener.target_group_name }}" }
-      }],
-      "LoadBalancerArn" : { "Ref" : "{{ listener.load_balancer_arn }}" } ,
+      "DefaultActions" : [
+      {% for action in listener.default_actions %}
+      {
+        "Type" : "{{ action.type }}",
+        "TargetGroupArn" : { "Ref" : "{{ action.target_group_name }}" }
+      }
+      {% if not loop.last %}, {% endif %}
+      {% endfor %}
+      ],
+      "LoadBalancerArn" : { "Ref" : "ApplicationLoadBalancer" } ,
       "Port" : "{{ listener.port }}",
-      "Protocol" : "{{ listener.protocol }}"
+      "Protocol" : "{{ listener.protocol | default('tcp') }}"
       {% if listener.ssl_policy is defined %}ß
       , "SslPolicy" : "{{ listener.ssl_policy }}"
       {% endif %}
     }
   } {% if not loop.last %}, {% endif %}
-  ,
   {% endfor %}
-    {# Create the target group for the Application Load Balancer #}
-    {% for target_group in alb_target_groups %}
+  ,
+  {# Create the target group for the Application Load Balancer #}
+  {% for target_group in alb_target_groups %}
     "{{ target_group.name }}":{
       "Type" : "AWS::ElasticLoadBalancingV2::TargetGroup",
       "Properties" : {
-        "HealthCheckIntervalSeconds" : "{{ target_group.health_check_interval_seconds }}",
-        "HealthCheckPath" : "{{ target_group.health_check_path }}",
-        "HealthCheckPort" : "{{ target_group.health_check_port }}",
-        "HealthCheckProtocol" : "{{ target_group.health_check_protocol }}",
-        "HealthCheckTimeoutSeconds" : "{{ target_group.health_check_timeout_seconds }}",
-        "HealthyThresholdCount" : "{{ target_group.healthy_threshold_count }}",
-        "Matcher" : "{{ target_group.matcher }}",
+        "HealthCheckIntervalSeconds" : "{{ alb_health_check_interval_seconds }}",
+        "HealthCheckPath" : "{{ target_group.health_check_path | default(alb_health_check_path) }}",
+        "HealthCheckPort" : "{{ target_group.port }}",
+        "HealthCheckProtocol" : "{{ alb_health_check_protocol }}",
+        "HealthCheckTimeoutSeconds" : "{{ alb_health_check_timeout_seconds }}",
+        "HealthyThresholdCount" : "{{ alb_healthy_threshold_count }}",
+        {% if target_group.matcher is defined %}
+           "Matcher" : "{{ target_group.matcher }}",
+        {% endif %}
         "Name" : "{{ target_group.name }}",
         "Port" : "{{ target_group.port }}",
-        "Protocol" : "{{ target_group.protocol }}",
-        {# Not really sure how to handle these as they're lists but do they need to be variables?? #}
-        "Tags" : [ { "Ref": "Tags" } ],
-        "TargetGroupAttributes" : [
-          { "Key" : "deregistration_delay.timeout_seconds", "Value" : "{{ target_group.deregistration_delay_timeout }}" },
-          { "Key" : "stickiness.enabled", "Value" : "{{ target_group.stickiness_enabled }}" },
-          { "Key" : "stickiness.type", "Value" : "{{ target_group.stickiness_type }}" },
-          { "Key" : "stickiness.lb_cookie.duration_seconds", "Value" : "{{ target_group.stickiness_lb_cookie_duration }}" }
-         ],
+        "Protocol" : "{{ target_group.protocol | default('tcp')}}",
         "Targets" : [
         {% for target in target_group.targets %}
           { "Id": "{{ target.id }}", "Port": "{{ target.port }}" }{% if not loop.last %}, {% endif %}
         {% endfor %}
         ],
-        "UnhealthyThresholdCount" : "{{ target_group.unhealthy_threshold_count }}",
+        "UnhealthyThresholdCount" : "{{ alb_unhealthy_threshold_count }}",
         "VpcId" : { "Ref" : "VPC" }
     }
   } {% if not loop.last %}, {% endif %}
-  ,
   {% endfor %}
+  ,
   {# Create the listener rules for the Application Load Balancer Listener and TargetGroup #}
   {% for rule in alb_listener_rules %}
     "{{ rule.name }}":{
       "Type": "AWS::ElasticLoadBalancingV2::ListenerRule",
       "Properties": {
+        "Actions": [
         {% for action in rule.actions %}
         {
-          "Type":"{{ action.type }}"
-          "TargetGroupArn": { "Ref" "{{ action.target_group_name }}" }
+          "Type":"{{ action.type }}",
+          "TargetGroupArn": { "Ref" : "{{ action.target_group_name }}" }
         }
         {% if not loop.last %}, {% endif %}
         {% endfor %}
-
+        ],
         "Conditions": [{
           "Field": "path-pattern",
           "Values": [ "{{ rule.pattern }}" ]
         }],
-        "ListenerArn": { "Ref": "ApplicationLoadBalancerListener"},
+        "ListenerArn": { "Ref": "{{ rule.listener }}"},
         "Priority": "{{ rule.priority }}"
       }
     } {% if not loop.last %}, {% endif %}
@@ -216,15 +161,11 @@
   "Outputs": {
     "LoadBalancerName": {
       "Description": "Long Lived Load Balancer name",
-      "Value": {"Ref": "LoadBalancer" }
-    },
-    "TargetSecurityGroupId": {
-      "Description": "Add backends to this security group to allow access from the ALB",
-      "Value": {"Ref": "LoadBalancerBackendSecurityGroup"}
+      "Value": {"Ref": "ApplicationLoadBalancer" }
     },
     "DnsName": {
       "Description": "Add backends to this security group to allow access from the ALB",
-      "Value": {"Fn::GetAtt": [ "LoadBalancer", "DNSName" ]}
+      "Value": {"Fn::GetAtt": [ "ApplicationLoadBalancer", "DNSName" ]}
     }
   }
 }
