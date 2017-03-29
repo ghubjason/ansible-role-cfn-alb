@@ -24,7 +24,7 @@ testv: ANSIBLE_OPTIONS = -vvvv
 test testv:
 	echo 'FROM mgage/docker-ansible' > tests/Dockerfile
 	echo "$$DOCKER_BODY" >> tests/Dockerfile
-	docker build --no-cache --build-arg TEST_LABEL="${MY_DIR}" \
+	docker build --build-arg TEST_LABEL="${MY_DIR}" \
 	  --build-arg TEST_LABEL_KEY=${TEST_LABEL_KEY} \
 	  --build-arg GIT_COMMIT=${GIT_COMMIT} \
 	  --build-arg TEST_TAG=${TEST_TAG} \
